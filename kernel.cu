@@ -98,7 +98,7 @@ __global__ void __launch_bounds__(blocksize, 8) nonceGrindc(uint32_t *const __re
 	midstate[7] = midstateIn[7];
 
 	int j = 0;
-
+#pragma unroll
 	for(j = 0; j < 16; j++)
 	{
 		buffer[j] = headerIn[j];
@@ -136,17 +136,19 @@ __global__ void __launch_bounds__(blocksize, 8) nonceGrindc(uint32_t *const __re
 
 		buffer[11] = n;
 		// printf("Nonce being used: %d\n" + buffer[11]);
-
+#pragma unroll
 		for(j = 0; j < 16; j++)
 		{
 			block[j] = buffer[j];
 		}
 
+#pragma unroll
 		for(j = 16; j < 64; j++)
 		{
 			block[j] = block[j - 16] + block[j - 7] + SIG1c(block[j - 2]) + SIG0c(block[j - 15]);
 		}
 
+#pragma unroll
 		for(j = 0; j < 64; j++)
 		{
 			S1 = (ror(e, 6)) ^ (ror(e, 11)) ^ (ror(e, 25));
@@ -199,11 +201,13 @@ __global__ void __launch_bounds__(blocksize, 8) nonceGrindc(uint32_t *const __re
 		h6 = g = 0x1f83d9ab;
 		h7 = h = 0x5be0cd19;
 
+#pragma unroll
 		for(j = 16; j < 64; j++)
 		{
 			block[j] = block[j - 16] + block[j - 7] + SIG1c(block[j - 2]) + SIG0c(block[j - 15]);
 		}
 
+#pragma unroll
 		for(j = 0; j < 64; j++)
 		{
 			S1 = (ror(e, 6)) ^ (ror(e, 11)) ^ (ror(e, 25));
@@ -330,7 +334,7 @@ void getHeaderForWork(uint8_t *header)
 void nonceGrindcuda(cudaStream_t cudastream, uint32_t threads, uint32_t *blockHeader, uint32_t *midState, uint32_t *nonceOut)
 {
 	cudaError_t e = cudaGetLastError();
-	nonceGrindc << <128, 768, 2048, cudastream >> >(blockHeader, midState, nonceOut);
+	nonceGrindc << <128, 768, 0, cudastream >> >(blockHeader, midState, nonceOut);
 	e = cudaGetLastError();
 	if(e != cudaSuccess)
 	{
