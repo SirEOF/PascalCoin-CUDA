@@ -1,7 +1,5 @@
-
-#include "cuda_runtime.h"
+#include <cuda_runtime.h>
 #include <cstdint>
-#include "device_launch_parameters.h"
 #include <chrono>
 
 #include <stdio.h>
@@ -16,32 +14,19 @@
 cudaStream_t cudastream;
 
 uint32_t *blockHeadermobj = nullptr;
-uint32_t *midStatemobj    = nullptr;
-uint32_t *nonceOutmobj    = nullptr;
+uint32_t *midStatemobj = nullptr;
+uint32_t *nonceOutmobj = nullptr;
 
-__device__ __forceinline__ uint32_t
-ror(const uint32_t a, const unsigned int n)
+__device__ __forceinline__ uint32_t ror(const uint32_t a, const unsigned int n)
 {
-#if __CUDA_ARCH__ >= 999 // Disabled
-	uint32_t d;
-	asm("shf.r.clamp.b32 %0, %1, %2, %3;" : "=r"(d) : "r"(a), "r"(a), "r"(n));
-	return d;
+#if __CUDA_ARCH__ >= 350
+	return __funnelshift_r(a, a, n);
 #else
 	return (a >> n) | (a << (32 - n));
 #endif
 }
 
-__device__ __forceinline__ uint32_t
-shr(const uint32_t a, const unsigned int n)
-{
-#if __CUDA_ARCH__ >= 999 // Disabled
-	uint32_t d;
-	asm("vshr.u32.u32.u32.clamp %0, %1, %2;" : "=r"(d) : "r"(a), "r"(n));
-	return d;
-#else
-	return a >> n;
-#endif
-}
+#define shr (a) >> (n);
 
 #define ROTRIGHT(a,b) ((a >> b) | (a << (32 - b)))
 #define SIG0(x) (ROTRIGHT(x,7) ^ ROTRIGHT(x,18) ^ ((x) >> 3))
@@ -52,7 +37,8 @@ shr(const uint32_t a, const unsigned int n)
 #define blocksize 2048
 #define npt 9
 
-static const uint32_t k[64] = {
+static const uint32_t k[64] =
+{
 	0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
 	0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
 	0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
@@ -73,7 +59,8 @@ static const uint32_t k[64] = {
 
 __global__ void __launch_bounds__(blocksize, 8) nonceGrindc(uint32_t *const __restrict__ headerIn, uint32_t *const __restrict__ midstateIn, uint32_t *const __restrict__ nonceOut)
 {
-	static const uint32_t k[64] = {
+	static const uint32_t k[64] =
+	{
 		0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
 		0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
 		0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
@@ -99,7 +86,7 @@ __global__ void __launch_bounds__(blocksize, 8) nonceGrindc(uint32_t *const __re
 	uint32_t midstate[8];
 
 	// const uint32_t id = (blockDim.x * blockIdx.x * blockIdx.x * blockIdx.x * headerIn[16] + threadIdx.x)*npt;
-	const uint32_t id = (headerIn[16] << 20) | (blockDim.x * blockIdx.x + threadIdx.x)*npt;
+	const uint32_t id = (headerIn[16] << 20) | (blockDim.x * blockIdx.x + threadIdx.x) * npt;
 
 	midstate[0] = midstateIn[0];
 	midstate[1] = midstateIn[1];
@@ -112,7 +99,7 @@ __global__ void __launch_bounds__(blocksize, 8) nonceGrindc(uint32_t *const __re
 
 	int j = 0;
 
-	for (j = 0; j < 16; j++)
+	for(j = 0; j < 16; j++)
 	{
 		buffer[j] = headerIn[j];
 	}
@@ -127,7 +114,7 @@ __global__ void __launch_bounds__(blocksize, 8) nonceGrindc(uint32_t *const __re
 	uint32_t h0, h1, h2, h3, h4, h5, h6, h7;
 
 	uint32_t a, b, c, d, e, f, g, h;
-	for (int n = id; n < id + npt; n++)
+	for(int n = id; n < id + npt; n++)
 	{
 		h0 = midstate[0];
 		h1 = midstate[1];
@@ -150,17 +137,17 @@ __global__ void __launch_bounds__(blocksize, 8) nonceGrindc(uint32_t *const __re
 		buffer[11] = n;
 		// printf("Nonce being used: %d\n" + buffer[11]);
 
-		for (j = 0; j < 16; j++)
+		for(j = 0; j < 16; j++)
 		{
 			block[j] = buffer[j];
 		}
 
-		for (j = 16; j < 64; j++)
+		for(j = 16; j < 64; j++)
 		{
 			block[j] = block[j - 16] + block[j - 7] + SIG1c(block[j - 2]) + SIG0c(block[j - 15]);
 		}
 
-		for (j = 0; j < 64; j++)
+		for(j = 0; j < 64; j++)
 		{
 			S1 = (ror(e, 6)) ^ (ror(e, 11)) ^ (ror(e, 25));
 			temp1 = h + S1 + ((e & f) ^ ((~e) & g)) + k[j] + block[j];
@@ -212,12 +199,12 @@ __global__ void __launch_bounds__(blocksize, 8) nonceGrindc(uint32_t *const __re
 		h6 = g = 0x1f83d9ab;
 		h7 = h = 0x5be0cd19;
 
-		for (j = 16; j < 64; j++)
+		for(j = 16; j < 64; j++)
 		{
 			block[j] = block[j - 16] + block[j - 7] + SIG1c(block[j - 2]) + SIG0c(block[j - 15]);
 		}
 
-		for (j = 0; j < 64; j++)
+		for(j = 0; j < 64; j++)
 		{
 			S1 = (ror(e, 6)) ^ (ror(e, 11)) ^ (ror(e, 25));
 			temp1 = h + S1 + ((e & f) ^ ((~e) & g)) + k[j] + block[j];
@@ -245,7 +232,7 @@ __global__ void __launch_bounds__(blocksize, 8) nonceGrindc(uint32_t *const __re
 
 		uint32_t targetX = h0 & 0xFFFFFFFF;
 		uint32_t targetY = h1 & 0xF0000000;
-		if (targetX == 0 && targetY == 0)
+		if(targetX == 0 && targetY == 0)
 		{
 			*nonceOut = n;
 			/* Uncomment these for additional mining information/verbosity */
@@ -265,8 +252,8 @@ unsigned char* hexToByteArray(const char* hexstring)
 {
 	size_t len = 176 * 2;
 	size_t final_len = len / 2;
-	unsigned char* chrs = (unsigned char*)malloc((final_len)* sizeof(*chrs));
-	for (size_t i = 0, j = 0; j<final_len; i += 2, j++)
+	unsigned char* chrs = (unsigned char*)malloc((final_len) * sizeof(*chrs));
+	for(size_t i = 0, j = 0; j<final_len; i += 2, j++)
 		chrs[j] = (hexstring[i] % 32 + 9) % 25 * 16 + (hexstring[i + 1] % 32 + 9) % 25;
 	return chrs;
 }
@@ -284,15 +271,15 @@ long getTimeMillis()
 char hex[176 * 2 + 1];
 int increment = 0;
 int callInc = 0;
-char old[4] = { 0x00, 0x00, 0x00, 0x00 }; // Used for detecting block hashing info changes
+char old[4] = {0x00, 0x00, 0x00, 0x00}; // Used for detecting block hashing info changes
 
 
 bool different(char* one, char* two, int length)
 {
 	int i = 0;
-	for (; i < length; i++)
+	for(; i < length; i++)
 	{
-		if (one[i] != two[i]) return true;
+		if(one[i] != two[i]) return true;
 	}
 	return false;
 }
@@ -300,21 +287,21 @@ bool different(char* one, char* two, int length)
 int deviceToUse = 0;
 void getHeaderForWork(uint8_t *header)
 {
-	if (callInc % 200 == 0)
+	if(callInc % 200 == 0)
 	{
 		callInc = 0;
 		FILE *fr;
 
 
 		char fileName[16] = "headeroutXX.txt";
-		fileName[9]  = (deviceToUse / 10) + 48;
+		fileName[9] = (deviceToUse / 10) + 48;
 		fileName[10] = (deviceToUse % 10) + 48;
 
 		fr = fopen(fileName, "rt");
 		fgets(hex, 352, fr);
 		hex[352] = '\0';
 
-		if (different(old, hex, 4))
+		if(different(old, hex, 4))
 		{
 			old[0] = hex[0];
 			old[1] = hex[1];
@@ -326,13 +313,13 @@ void getHeaderForWork(uint8_t *header)
 
 		fclose(fr);
 	}
-	 
+
 	callInc++;
 	unsigned char* bufferHeader = hexToByteArray(hex);
 	memcpy(header, bufferHeader, headerSize);
 	free(bufferHeader);
 	increment++;
-	long time = std::time(0);
+	time_t time = std::time(0);
 
 	header[168] = (time & 0x000000FF);
 	header[169] = (time & 0x0000FF00) >> 8;
@@ -345,7 +332,7 @@ void nonceGrindcuda(cudaStream_t cudastream, uint32_t threads, uint32_t *blockHe
 	cudaError_t e = cudaGetLastError();
 	nonceGrindc << <128, 768, 2048, cudastream >> >(blockHeader, midState, nonceOut);
 	e = cudaGetLastError();
-	if (e != cudaSuccess)
+	if(e != cudaSuccess)
 	{
 		printf("Error: %s\n", cudaGetErrorString(e));
 	}
@@ -362,20 +349,20 @@ void grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 	static uint8_t *midState = nullptr;
 	cudaError_t ret;
 
-	if (!init)
+	if(!init)
 	{
 		ret = cudaMallocHost(&nonceOut, 4);
-		if (ret != cudaSuccess)
+		if(ret != cudaSuccess)
 		{
 			printf("ERROR ALLOCATION\n");
 		}
 		ret = cudaMallocHost(&blockHeader, 64);
-		if (ret != cudaSuccess)
+		if(ret != cudaSuccess)
 		{
 			printf("ERROR ALLOCATION\n");
 		}
 		ret = cudaMallocHost(&midState, 32);
-		if (ret != cudaSuccess)
+		if(ret != cudaSuccess)
 		{
 			printf("ERROR ALLOCATION\n");
 		}
@@ -410,12 +397,12 @@ void grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 	uint32_t h = h7;
 
 	/* 16 * 32 = 512 bits, the size of a chunk in SHA-256 */
-	for (int i = 0; i < 16; i++)
+	for(int i = 0; i < 16; i++)
 	{
 		block[i] = ((uint32_t)blockHeader[i * 4 + 0] << 24) | ((uint32_t)blockHeader[i * 4 + 1] << 16) | ((uint32_t)blockHeader[i * 4 + 2] << 8) | ((uint32_t)blockHeader[i * 4 + 3]);
 	}
 
-	for (int i = 16; i < 64; i++)
+	for(int i = 16; i < 64; i++)
 	{
 		block[i] = block[i - 16] + block[i - 7] + SIG1(block[i - 2]) + SIG0(block[i - 15]);
 	}
@@ -425,7 +412,7 @@ void grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 	uint32_t S1;
 	uint32_t S0;
 
-	for (int i = 0; i < 64; i++)
+	for(int i = 0; i < 64; i++)
 	{
 		S1 = (ROTRIGHT(e, 6)) ^ (ROTRIGHT(e, 11)) ^ (ROTRIGHT(e, 25));
 		temp1 = h + S1 + ((e & f) ^ ((~e) & g)) + k[i] + block[i];
@@ -463,17 +450,17 @@ void grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 	h = h7;
 
 	/* 16 * 32 = 512 bits, the size of a chunk in SHA-256 */
-	for (int i = 0; i < 16; i++)
+	for(int i = 0; i < 16; i++)
 	{
 		block[i] = ((uint32_t)blockHeader[(i + 16) * 4 + 0] << 24) | ((uint32_t)blockHeader[(i + 16) * 4 + 1] << 16) | ((uint32_t)blockHeader[(i + 16) * 4 + 2] << 8) | ((uint32_t)blockHeader[(i + 16) * 4 + 3]);
 	}
 
-	for (int i = 16; i < 64; i++)
+	for(int i = 16; i < 64; i++)
 	{
 		block[i] = block[i - 16] + block[i - 7] + SIG1(block[i - 2]) + SIG0(block[i - 15]);
 	}
 
-	for (int i = 0; i < 64; i++)
+	for(int i = 0; i < 64; i++)
 	{
 		S1 = (ROTRIGHT(e, 6)) ^ (ROTRIGHT(e, 11)) ^ (ROTRIGHT(e, 25));
 		temp1 = h + S1 + ((e & f) ^ ((~e) & g)) + k[i] + block[i];
@@ -511,7 +498,7 @@ void grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 	midstateInternal[7] = h7;
 
 	uint32_t remainingHeader[17];
-	for (int i = 0; i < 12; i++)
+	for(int i = 0; i < 12; i++)
 	{
 		remainingHeader[i] = ((uint32_t)blockHeader[(i + 32) * 4 + 0] << 24) | ((uint32_t)blockHeader[(i + 32) * 4 + 1] << 16) | ((uint32_t)blockHeader[(i + 32) * 4 + 2] << 8) | ((uint32_t)blockHeader[(i + 32) * 4 + 3]);
 	}
@@ -520,17 +507,18 @@ void grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 	remainingHeader[14] = 0x00000000;
 	remainingHeader[15] = 0x00000580;
 
-	for (i = 0; i < 1; i++)
+	for(i = 0; i < 1; i++)
 	{
 		remainingHeader[16] = ++offset;
 
-		if (offset > 1024) {
+		if(offset > 1024)
+		{
 			offset = 0;
 		}
 
 		ret = cudaSuccess;
 		ret = cudaMemcpyAsync(blockHeadermobj, remainingHeader, 68, cudaMemcpyHostToDevice, cudastream);
-		if (ret != cudaSuccess)
+		if(ret != cudaSuccess)
 		{
 			printf("Failed here1!\n");
 		}
@@ -539,30 +527,30 @@ void grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 
 
 		ret = cudaMemcpyAsync(midStatemobj, midstateInternal, 32, cudaMemcpyHostToDevice, cudastream);
-		if (ret != cudaSuccess)
+		if(ret != cudaSuccess)
 		{
 			printf("Failed here2!\n");
 		}
 
 		ret = cudaMemcpyAsync(nonceOutmobj, nonceOut, 4, cudaMemcpyHostToDevice, cudastream);
-		if (ret != cudaSuccess)
+		if(ret != cudaSuccess)
 		{
 			printf("Failed here3!\n");
 		}
 		nonceGrindcuda(cudastream, items_per_iter, blockHeadermobj, midStatemobj, nonceOutmobj);
 
 		ret = cudaMemcpyAsync(nonceOut, nonceOutmobj, 4, cudaMemcpyDeviceToHost, cudastream);
-		if (ret != cudaSuccess)
+		if(ret != cudaSuccess)
 		{
 			printf("Failed here!4\n");
 		}
 		ret = cudaStreamSynchronize(cudastream);
-		if (ret != cudaSuccess)
+		if(ret != cudaSuccess)
 		{
 			printf("Failed here!5\n");
 		}
 
-		if (*nonceOut != 0)
+		if(*nonceOut != 0)
 		{
 			uint32_t nonce = *nonceOut;
 			nonce = (((nonce & 0xFF000000) >> 24) | ((nonce & 0x00FF0000) >> 8) | ((nonce & 0x0000FF00) << 8) | ((nonce & 0x000000FF) << 24));
@@ -570,7 +558,7 @@ void grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 			timestamp = ((timestamp & 0x000000FF) << 24) + ((timestamp & 0x0000FF00) << 8) + ((timestamp & 0x00FF0000) >> 8) + ((timestamp & 0xFF000000) >> 24);
 			printf("Found nonce: %08x    T: %08x    Hashrate: %.3f MH/s   Total: %d\n", nonce, timestamp, (((((double)totalNonces) * 4 * 16 * 16 * 16 * 16) / (4)) / (((double)getTimeMillis() - start) / 1000)), totalNonces);
 
-			
+
 			FILE* f2;
 
 			char fileName[13] = "datainXX.txt";
@@ -579,15 +567,15 @@ void grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 			printf("Reading from %s\n", fileName);
 
 			f2 = fopen(fileName, "w");
-			while (f2 == NULL)
+			while(f2 == NULL)
 			{
 				f2 = fopen(fileName, "w");
 			}
 
 			fprintf(f2, "\$%08x\n", nonce);
 			fprintf(f2, "\$%08x", timestamp);
-			fclose(f2); 
-			
+			fclose(f2);
+
 
 			*nonceOut = 0;
 			totalNonces++;
@@ -602,12 +590,12 @@ int main(int argc, char *argv[])
 {
 	int i = 0; int j = 0;
 
-	if (argc > 1)
+	if(argc > 1)
 	{
-		for (i = 1; i < argc; i++)
+		for(i = 1; i < argc; i++)
 		{
 			char* argument = argv[i];
-			if (argument[0] == 'd')
+			if(argument[0] == 'd')
 			{
 				deviceToUse = argument[1] - 48;
 			}
@@ -623,14 +611,14 @@ int main(int argc, char *argv[])
 
 	int version, ret;
 	ret = cudaDriverGetVersion(&version);
-	if (ret != cudaSuccess)
+	if(ret != cudaSuccess)
 	{
 		printf("ERROR ALLOCATION\n");
 	}
 
 	int deviceCount;
 	ret = cudaGetDeviceCount(&deviceCount);
-	if (ret != cudaSuccess)
+	if(ret != cudaSuccess)
 	{
 		printf("ERROR ALLOCATION\n");
 	}
@@ -642,10 +630,10 @@ int main(int argc, char *argv[])
 
 	printf("\n");
 
-	for (int count = 0; count < deviceCount; count++)
+	for(int count = 0; count < deviceCount; count++)
 	{
 		ret = cudaGetDeviceProperties(&deviceProp, count);
-		if (ret != cudaSuccess)
+		if(ret != cudaSuccess)
 		{
 			printf("ERROR ALLOCATION\n");
 		}
@@ -654,7 +642,7 @@ int main(int argc, char *argv[])
 		printf("    Is Integrated:           %s\n", (deviceProp.integrated == 0 ? "false" : "true"));
 		printf("    Compute Capability:      %d.%d\n", deviceProp.major, deviceProp.minor);
 		printf("    Kernel Concurrency:      %d\n", deviceProp.concurrentKernels);
-		printf("    Max Grid Size:           %d\n", deviceProp.maxGridSize);
+		printf("    Max Grid Size:           %d\n", deviceProp.maxGridSize[0]);
 		printf("    Max Threads per Block:   %d\n", deviceProp.maxThreadsPerBlock);
 		printf("    Registers per Block:     %d\n", deviceProp.regsPerBlock);
 		printf("    Registers per SM:        %d\n", deviceProp.regsPerMultiprocessor);
@@ -667,33 +655,33 @@ int main(int argc, char *argv[])
 
 	printf("Mining on device #%d...\n\n", deviceToUse);
 	ret = cudaSetDevice(deviceToUse);
-	if (ret != cudaSuccess)
+	if(ret != cudaSuccess)
 	{
 		printf("ERROR ALLOCATION\n");
 	}
 	cudaDeviceReset();
 	ret = cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync);
-	if (ret != cudaSuccess)
+	if(ret != cudaSuccess)
 	{
 		printf("ERROR ALLOCATION\n");
 	}
 	ret = cudaStreamCreate(&cudastream);
-	if (ret != cudaSuccess)
+	if(ret != cudaSuccess)
 	{
 		printf("ERROR ALLOCATION\n");
 	}
 	ret = cudaMalloc(&blockHeadermobj, 68);
-	if (ret != cudaSuccess)
+	if(ret != cudaSuccess)
 	{
 		printf("ERROR ALLOCATION\n");
 	}
 	ret = cudaMalloc(&midStatemobj, 32);
-	if (ret != cudaSuccess)
+	if(ret != cudaSuccess)
 	{
 		printf("ERROR ALLOCATION\n");
 	}
 	ret = cudaMalloc(&nonceOutmobj, 4);
-	if (ret != cudaSuccess)
+	if(ret != cudaSuccess)
 	{
 		printf("ERROR ALLOCATION\n");
 	}
@@ -711,7 +699,7 @@ int main(int argc, char *argv[])
 
 	bool quit = false;
 
-	while (!quit)
+	while(!quit)
 	{
 		grindNonces(items_per_iter, cycles_per_iter);
 	}
