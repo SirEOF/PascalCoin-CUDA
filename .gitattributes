@@ -1,0 +1,7 @@
+* text=auto
+
+*.txt text eol=crlf
+*.vcxproj text eol=crlf
+*.sln text eol=crlf
+
+*.cu diff=cpp
