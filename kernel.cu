@@ -16,6 +16,7 @@ cudaStream_t cudastream;
 uint32_t *blockHeadermobj = nullptr;
 uint32_t *midStatemobj = nullptr;
 uint32_t *nonceOutmobj = nullptr;
+static uint64_t totalhashes;
 
 __device__ __forceinline__ uint32_t ror(const uint32_t a, const unsigned int n)
 {
@@ -265,11 +266,11 @@ unsigned char* hexToByteArray(const char* hexstring)
 #define headerSize 176
 
 // Only used for determining hashrate, and it's this method's fault that the hashrate sometimes shows as negative (this "rolls over" since nothing over the hour is used in creating the relative time
-long getTimeMillis()
+uint64_t getTimeMillis()
 {
 	SYSTEMTIME st;
 	GetSystemTime(&st);
-	return st.wHour * 60 * 60 * 1000 + st.wMinute * 60 * 1000 + st.wSecond * 1000 + st.wMilliseconds;
+	return st.wHour * 3600000 + st.wMinute * 60000 + st.wSecond * 1000 + st.wMilliseconds;
 }
 
 char hex[176 * 2 + 1];
@@ -340,9 +341,10 @@ void nonceGrindcuda(cudaStream_t cudastream, uint32_t threads, uint32_t *blockHe
 	{
 		printf("Error: %s\n", cudaGetErrorString(e));
 	}
+	totalhashes += 128 * 768 * npt;
 }
 
-long start = getTimeMillis();
+static uint64_t start;
 int totalNonces = 0;
 int offset = 0;
 void grindNonces(uint32_t items_per_iter, int cycles_per_iter)
@@ -373,7 +375,7 @@ void grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 		init = true;
 	}
 
-	long startTime = getTimeMillis();
+	uint64_t startTime = getTimeMillis();
 	int i;
 
 	getHeaderForWork(blockHeader);
@@ -560,7 +562,7 @@ void grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 			nonce = (((nonce & 0xFF000000) >> 24) | ((nonce & 0x00FF0000) >> 8) | ((nonce & 0x0000FF00) << 8) | ((nonce & 0x000000FF) << 24));
 			uint32_t timestamp = remainingHeader[10];
 			timestamp = ((timestamp & 0x000000FF) << 24) + ((timestamp & 0x0000FF00) << 8) + ((timestamp & 0x00FF0000) >> 8) + ((timestamp & 0xFF000000) >> 24);
-			printf("Found nonce: %08x    T: %08x    Hashrate: %.3f MH/s   Total: %d\n", nonce, timestamp, (((((double)totalNonces) * 4 * 16 * 16 * 16 * 16) / (4)) / (((double)getTimeMillis() - start) / 1000)), totalNonces);
+			printf("Found nonce: %08x    T: %08x    Hashrate: %lld MH/s   Total: %d\n", nonce, timestamp, totalhashes / ((getTimeMillis() - start) / 1000) / 1000000, totalNonces);
 
 
 			FILE* f2;
@@ -586,7 +588,7 @@ void grindNonces(uint32_t items_per_iter, int cycles_per_iter)
 		}
 	}
 
-	long endTime = getTimeMillis();
+	uint64_t endTime = getTimeMillis();
 	double timeDelta = endTime - startTime;
 }
 
@@ -695,13 +697,16 @@ int main(int argc, char *argv[])
 	printf("Last error: %s\n", cudaGetErrorString(e));
 
 
-	long start = getTimeMillis();
+	start = getTimeMillis();
 	grindNonces(items_per_iter, 1);
 
 	float elapsedTime = getTimeMillis() - start;
 	items_per_iter *= (seconds_per_iter / elapsedTime) / cycles_per_iter;
 
 	bool quit = false;
+
+	totalhashes = 0;
+	start = getTimeMillis();
 
 	while(!quit)
 	{
